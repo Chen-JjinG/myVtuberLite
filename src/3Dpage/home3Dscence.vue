@@ -10,6 +10,7 @@ import { GridHelper, Clock, DirectionalLight, AmbientLight, AxesHelper, Color, M
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { VRM, VRMUtils, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { bundledModelUrl } from "../utils/assetUrl";
 
 export default defineComponent({
     setup() {
@@ -65,7 +66,7 @@ export default defineComponent({
             });
 
             loader.load(
-                "./source/humanModel/Miku2.vrm",
+                bundledModelUrl(1),
                 (gltf) => {
                     const vrm = gltf.userData.vrm;
 

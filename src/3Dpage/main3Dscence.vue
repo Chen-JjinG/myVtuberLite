@@ -7,26 +7,33 @@
 //性能监视器
 import Stats from 'three/examples/jsm/libs/stats.module.js'
 
-import { defineComponent, onMounted, onUnmounted, ref, render } from 'vue';
+import { defineComponent, onMounted, onUnmounted, ref, render, nextTick } from 'vue';
 import { TextureLoader, GridHelper, Clock, DirectionalLight, AmbientLight, AxesHelper, Color, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry, Scene, WebGLRenderer, Group, Quaternion, Vector3, Euler, MathUtils } from 'three';
 //加载vrm模型时要用
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
 import { VRM, VRMUtils, VRMLoaderPlugin, VRMHumanBoneName, VRMExpressionPresetName } from "@pixiv/three-vrm";
 //@ts-ignore
-import { get_model } from '../http/modelserver';
+import { get_model } from '../http/modelServer';
 
 //Mediapipe识别数据与vrm模型绑定的工具引入
 import * as Kalidokit from "../core";
 
-//Mediapipe相关工具的引入
-import { Holistic } from "@mediapipe/holistic/holistic.js"
-import * as HOLISTIC from "@mediapipe/holistic"
-import { Camera } from '@mediapipe/camera_utils/camera_utils.js'
-import { drawConnectors, drawLandmarks, } from '@mediapipe/drawing_utils/drawing_utils.js'
-import { HAND_CONNECTIONS } from '@mediapipe/hands/hands.js'
-import { FACEMESH_TESSELATION } from '@mediapipe/face_mesh/face_mesh.js'
-import { POSE_CONNECTIONS } from '@mediapipe/pose/pose.js'
+// MediaPipe 的发行文件是挂到全局上的经典脚本，见 index.html。
+import { bundledModelUrl, bundledBackgroundUrl, mediapipeHolisticFile } from '../utils/assetUrl'
+
+function mediapipeApi() {
+    const g = globalThis as any
+    return {
+        Holistic: g.Holistic,
+        Camera: g.Camera,
+        drawConnectors: g.drawConnectors,
+        drawLandmarks: g.drawLandmarks,
+        HAND_CONNECTIONS: g.HAND_CONNECTIONS,
+        FACEMESH_TESSELATION: g.FACEMESH_TESSELATION,
+        POSE_CONNECTIONS: g.POSE_CONNECTIONS,
+    }
+}
 
 //引用Kalidokit
 const remap = Kalidokit.Utils.remap;
@@ -40,8 +47,9 @@ function initStats() {
     stats.setMode(0)
     stats.domElement.style.position = "relative"
     stats.domElement.style.width = "100%"
-    console.log(stats_element)
-    stats_element!.appendChild(stats.domElement)
+    if (stats_element) {
+        stats_element.appendChild(stats.domElement)
+    }
 }
 
 //一些变量的定义
@@ -58,6 +66,7 @@ const emit = defineEmits(['getPreviewPosition', 'cameraOperate', 'colorChange', 
 //获取vrm模型文件的url
 const props = defineProps({
     vrm_fileid: Number,
+    vrm_url: String,
     // background_color: Object
 })
 
@@ -65,7 +74,7 @@ let receive_vrm_fileid = ref(props.vrm_fileid)
 let vrm_file_url = ref()
 // let background_color = ref(Object.assign(new Color, props.background_color))
 // console.log(background_color)
-vrm_file_url.value = '/api/file/download/' + receive_vrm_fileid.value?.toString() + '/' + '0'
+vrm_file_url.value = props.vrm_url || bundledModelUrl(receive_vrm_fileid.value)
 
 //定义一个场景
 const scene = new Scene();
@@ -157,10 +166,7 @@ function init() {
     // }
 
     loader.load(
-        "./source/humanModel/Miku2.vrm",
-        //从后端加载模型
-        // '/api/model/download',
-        // vrm_file_url.value,
+        vrm_file_url.value,
         (gltf) => {
             const vrm = gltf.userData.vrm;
             console.log(vrm)
@@ -185,13 +191,26 @@ function init() {
         },
         //(progress) => {  },
         // called when loading has errors
-        (error) => console.error(error)
+        (error) => {
+            console.error(error)
+            emit('openLoading', { loadingBool: false, loadingText: '' })
+        }
     );
 
     /* 设置mediapipe相关的实例 */
 
     let videoElement = document.querySelector(".input_video"),
         guideCanvas = document.querySelector("canvas.guides");
+
+    const {
+        Holistic,
+        Camera,
+        drawConnectors,
+        drawLandmarks,
+        HAND_CONNECTIONS,
+        FACEMESH_TESSELATION,
+        POSE_CONNECTIONS,
+    } = mediapipeApi()
 
     const onResults = (results) => {
         //console.log(results);
@@ -205,43 +224,25 @@ function init() {
         animateVRM(currentVrm, results);
     };
 
-    //从cdn远程请求
-    // const holistic = new Holistic({
-    //     locateFile: (file) => {
-    //         return `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1635989137/${file}`;
-    //     },
-    // });
-
-    //还是本地好
-    const holistic = new Holistic({
+    const holistic = typeof Holistic === 'function' ? new Holistic({
         locateFile: (file) => {
-            return `../node_modules/@mediapipe/holistic/${file}`;
+            return mediapipeHolisticFile(file);
         },
-    });
+    }) : null
 
-
-    holistic.crossOrigin = "anonymous"
-    /*
-    holistic.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.7,
-        minTrackingConfidence: 0.7,
-        refineFaceLandmarks: true,
-    });*/
-
-    holistic.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        enableSegmentation: true,
-        smoothSegmentation: true,
-        refineFaceLandmarks: true,
-        minDetectionConfidence: 0.4,
-        minTrackingConfidence: 0.4
-    });
-
-
-    holistic.onResults(onResults);
+    if (holistic) {
+        holistic.crossOrigin = "anonymous"
+        holistic.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            enableSegmentation: true,
+            smoothSegmentation: true,
+            refineFaceLandmarks: true,
+            minDetectionConfidence: 0.4,
+            minTrackingConfidence: 0.4
+        });
+        holistic.onResults(onResults);
+    }
 
     // 用于辅助旋转动画的方法
     const rigRotation = (name, rotation = { x: 0, y: 0, z: 0, rotationOrder: undefined }, dampener = 1, lerpAmount = 0.3) => {
@@ -568,15 +569,22 @@ function init() {
 
     // 用Mediapipe获取录像内容
 
-    const mediaCamera = new Camera(videoElement, {
-        onFrame: async () => {
-            await holistic.send({ image: videoElement });
-        },
-        width: 640,
-        height: 480,
-    });
-    //调试页面的时候暂时不想开摄像头
-    mediaCamera.start();
+    if (videoElement instanceof HTMLVideoElement && typeof Camera === 'function' && holistic) {
+        const mediaCamera = new Camera(videoElement, {
+            onFrame: async () => {
+                await holistic.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480,
+        });
+        //调试页面的时候暂时不想开摄像头
+        mediaCamera.start().catch((error) => {
+            console.error(error)
+            emit('openLoading', { loadingBool: false, loadingText: '' })
+        })
+    } else {
+        emit('openLoading', { loadingBool: false, loadingText: '' })
+    }
 
 
     // 主要的渲染循环
@@ -641,10 +649,11 @@ document.addEventListener("keydown", (event) => {
 });
 
 onMounted(() => {
-    initStats()
     init()
+    // #status lives in a sibling panel that mounts after this component.
+    nextTick(() => initStats())
     // changeBackground(false, '/api/file/download/2/1')
-    changeBackground(false,"./source/images/loginBackground.png")
+    changeBackground(false, bundledBackgroundUrl())
 })
 
 
