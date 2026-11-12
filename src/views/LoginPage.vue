@@ -113,7 +113,7 @@
 </style>
 <script lang="ts" setup>
 import Main3Dscence from '../3Dpage/main3Dscence.vue';
-import LoginVue from '../components/Login/Login.vue';
+import LoginVue from '../components/Login/login.vue';
 import SignupVue from '../components/Login/signup.vue';
 import { ref, computed, watch, onMounted } from 'vue';
 import { method } from 'lodash';

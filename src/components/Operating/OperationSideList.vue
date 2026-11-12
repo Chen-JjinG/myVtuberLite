@@ -106,7 +106,6 @@ import { parse } from '@vue/compiler-dom';
 import { Color } from 'three';
 import { parseInt } from 'lodash';
 import { ElLoading } from 'element-plus'
-import { tr } from 'element-plus/es/locale';
 // const props = defineProps({
 //     cameraOperate: Boolean,
 // })
