@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "myvtuberlite",
+  // Assets-only Worker. A config file stops `wrangler deploy` from
+  // auto-configuring the Cloudflare Vite plugin, which rejects Vite 4.
+  "compatibility_date": "2026-11-12",
+  "assets": {
+    "directory": "./dist",
+    // Missing document routes serve index.html. Files that exist
+    // (JS, VRM, wasm, tflite) are served as themselves.
+    "not_found_handling": "single-page-application"
+  }
+}
